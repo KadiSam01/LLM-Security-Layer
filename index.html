@@ -486,8 +486,10 @@
       $toolChip.textContent = "Tool Gateway";
     }, 500);
 
+    
     // Seed CSRF (demo). In prod, round-trip to server to mint it (e.g., SameSite cookie + header echo).
     state.csrf = crypto.getRandomValues(new Uint32Array(1))[0].toString(16);
   </script>
 </body>
 </html>
+
