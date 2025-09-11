@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>RAG Assistant — Frontend</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- DOMPurify for output sanitization -->
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js" integrity="sha256-bvJrM5N8H2E5m0q6nCqQ0V5mJpV6e4uM6wzU7D0d1Sk=" crossorigin="anonymous"></script>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --accent: #22d3ee;
+      --accent-2: #60a5fa;
+      --danger: #ef4444;
+      --ok: #22c55e;
+      --card: #0b1220;
+      --chip: #1f2937;
+      --border: #243244;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: radial-gradient(1200px 600px at 70% -10%, #0b1220 20%, var(--bg) 70%);
+      color: var(--text);
+      font: 15px/1.45 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+    }
+    .wrap {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      height: 100dvh;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 16px;
+      gap: 12px;
+    }
+    header, footer, .bar {
+      background: color-mix(in oklab, var(--panel) 96%, black 4%);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    header { justify-content: space-between; }
+    .brand {
+      display: flex; align-items: center; gap: 10px; font-weight: 700;
+    }
+    .brand .dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      box-shadow: 0 0 10px var(--accent);
+    }
+    .chips { display:flex; gap:8px; flex-wrap: wrap; }
+    .chip {
+      background: var(--chip); color: var(--muted);
+      border: 1px solid var(--border);
+      padding: 4px 8px; border-radius: 999px; font-size: 12px;
+    }
+    .chip.ok { color: #9ffcc2; border-color: #1d3b2a; background: #0f1b15; }
+    .chip.warn { color: #ffe3a3; border-color: #473b1a; background: #1b160a; }
+    .chip.bad { color: #ffb4b4; border-color: #4a1a1a; background: #1a0d0d; }
+
+    .main {
+      display: grid;
+      grid-template-columns: 1fr 300px;
+      gap: 12px;
+      min-height: 0;
+    }
+    .chat {
+      background: color-mix(in oklab, var(--panel) 92%, black 8%);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      display: flex; flex-direction: column; gap: 12px;
+      min-height: 0;
+    }
+    .messages {
+      overflow:auto; flex:1; padding-right: 6px;
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .msg {
+      display: grid; gap: 6px;
+      background: #0c1424;
+      border: 1px solid var(--border);
+      border-radius: 12px; padding: 10px 12px;
+    }
+    .msg.user { background: #0d1a2b; border-color: #2a3b52 }
+    .msg.assistant { background: #0b1728; border-color: #25374d }
+    .meta { display:flex; gap:8px; align-items:center; color: var(--muted); font-size: 12px; }
+    .role { font-weight: 700; color: #d1e9ff; }
+    .time { margin-left: auto; }
+    .content p { margin: 0.3em 0; }
+    .content code, .content pre {
+      background: #0a1220; border: 1px solid #1b2940; border-radius: 8px; padding: 2px 6px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      font-size: 12.5px;
+    }
+    .content pre { padding: 10px; overflow:auto; }
+    .source-list { font-size: 12px; color: var(--muted); display:flex; gap:6px; flex-wrap: wrap; }
+    .source-pill { background: #121a2a; border: 1px dashed #2b3a56; border-radius: 999px; padding: 2px 8px; }
+
+    .side {
+      display: flex; flex-direction: column; gap: 12px; min-height: 0;
+    }
+    .panel {
+      background: color-mix(in oklab, var(--panel) 96%, black 4%);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 12px; display:grid; gap:10px; min-height: 0;
+    }
+    .panel h3 { margin: 0; font-size: 14px; color: #cbe5ff; letter-spacing: .2px; }
+    .kv { display: grid; grid-template-columns: 1fr auto; gap: 8px 10px; align-items: center; }
+    .kv .k { color: var(--muted); font-size: 12px; }
+    .kv .v { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #cbd5e1; font-size: 12px; }
+
+    .composer {
+      display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: end;
+      background: color-mix(in oklab, var(--panel) 96%, black 4%); border: 1px solid var(--border);
+      border-radius: 14px; padding: 10px;
+    }
+    textarea {
+      width: 100%; resize: vertical; min-height: 56px; max-height: 160px;
+      background: #0b1220; color: var(--text);
+      border: 1px solid var(--border); border-radius: 10px; padding: 10px;
+      outline: none;
+    }
+    .actions { display:flex; gap: 8px; }
+    button {
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      color: #051224; border: 0; border-radius: 10px; padding: 10px 14px;
+      font-weight: 700; cursor: pointer;
+    }
+    button.secondary {
+      background: #0b1220; color: var(--text);
+      border: 1px solid var(--border);
+    }
+    button:disabled { opacity: .6; cursor: not-allowed; }
+    .tiny { font-size: 12px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="brand">
+        <div class="dot"></div>
+        <div>RAG Assistant</div>
+        <div class="tiny">Frontend • static HTML/JS</div>
+      </div>
+      <div class="chips">
+        <span id="jwtChip" class="chip warn">JWT: not signed in</span>
+        <span id="retrievalChip" class="chip">Retrieval</span>
+        <span id="guardChip" class="chip">Llama Guard</span>
+        <span id="toolChip" class="chip">Tool Gateway</span>
+        <span id="rateChip" class="chip">Rate-limit safe</span>
+      </div>
+    </header>
+
+    <div class="main">
+      <section class="chat">
+        <div id="messages" class="messages"></div>
+
+        <div class="composer">
+          <div>
+            <textarea id="input" placeholder="Ask a question… (Shift+Enter for newline, Enter to send)"></textarea>
+            <div class="tiny">Your text is sanitized (DOMPurify) before display. Streaming supported.</div>
+          </div>
+          <div class="actions">
+            <button id="loginBtn" class="secondary" type="button">Sign in</button>
+            <button id="clearBtn" class="secondary" type="button">New session</button>
+            <button id="sendBtn" type="button">Send</button>
+          </div>
+        </div>
+      </section>
+
+      <aside class="side">
+        <div class="panel">
+          <h3>Session</h3>
+          <div class="kv">
+            <div class="k">session_id</div><div id="sid" class="v"></div>
+            <div class="k">tenant_id</div><div id="tenant" class="v"></div>
+            <div class="k">user_id</div><div id="uid" class="v"></div>
+          </div>
+        </div>
+
+        <div class="panel" style="min-height:180px;">
+          <h3>Last Response • Sources</h3>
+          <div id="sources" class="source-list"></div>
+        </div>
+      </aside>
+    </div>
+
+    <footer class="bar">
+      <span class="tiny">NGINX (edge) → FastAPI Orchestrator → Llama Guard → Retrieval → LLM → (optional) Tools</span>
+    </footer>
+  </div>
+
+  <script>
+    // ========= CONFIG (replace TODOs) =========
+    const CONFIG = {
+      ORCHESTRATOR_URL: "https://your-edge-or-orchestrator.example.com/api/chat", // TODO
+      CSRF_HEADER: "X-CSRF-Token",
+      USE_SSE: true, // if your backend streams text/event-stream
+      // Example: pass extra headers for multi-tenant isolation (from JWT claims ideally)
+      TENANT_ID: "demo-tenant", // TODO: derive from your IdP/JWT
+    };
+
+    // ========= STATE (kept in memory; never localStorage per your design) =========
+    let state = {
+      jwt: null,
+      csrf: null,
+      sessionId: genId("sess"),
+      userId: null,
+      tenantId: CONFIG.TENANT_ID,
+      history: [],
+      isSending: false,
+    };
+
+    // ========= UI ELEMENTS =========
+    const $messages = document.getElementById("messages");
+    const $input = document.getElementById("input");
+    const $send = document.getElementById("sendBtn");
+    const $clear = document.getElementById("clearBtn");
+    const $login = document.getElementById("loginBtn");
+    const $sid = document.getElementById("sid");
+    const $tenant = document.getElementById("tenant");
+    const $uid = document.getElementById("uid");
+    const $jwtChip = document.getElementById("jwtChip");
+    const $retrievalChip = document.getElementById("retrievalChip");
+    const $guardChip = document.getElementById("guardChip");
+    const $toolChip = document.getElementById("toolChip");
+    const $rateChip = document.getElementById("rateChip");
+    const $sources = document.getElementById("sources");
+
+    // ========= INIT =========
+    updateSessionPanel();
+    addAssistant("Hi! I’m ready. Sign in (or use a dev token), then ask me anything.");
+
+    // Keyboard: Enter to send, Shift+Enter newline
+    $input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        $send.click();
+      }
+    });
+
+    $send.addEventListener("click", () => sendMessage());
+    $clear.addEventListener("click", () => newSession());
+    $login.addEventListener("click", async () => {
+      // ====== Auth placeholder ======
+      // Replace this with your Auth0 (or other IdP) login flow. When done, call setJwt(token).
+      // Example below asks for a pasted JWT in a prompt (dev only).
+      const token = prompt("Paste a dev JWT (for demo only). In prod, use Auth0 login.");
+      if (token) {
+        setJwt(token);
+        // Example CSRF fetch (optional): call an endpoint that returns a CSRF token cookie/value.
+        state.csrf = crypto.getRandomValues(new Uint32Array(1))[0].toString(16); // demo CSRF
+        flashChip($jwtChip, "ok", "JWT: signed in");
+      }
+    });
+
+    function setJwt(token) {
+      state.jwt = token;
+      // Derive ids if your JWT has claims (tenant_id, sub, etc.)
+      try {
+        const [, payload] = token.split(".");
+        const claims = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
+        state.userId = claims.sub || claims.user_id || "user-from-jwt";
+        state.tenantId = claims.tenant_id || state.tenantId;
+      } catch {
+        state.userId = "user-dev";
+      }
+      updateSessionPanel();
+    }
+
+    function newSession() {
+      state.sessionId = genId("sess");
+      state.history = [];
+      $messages.innerHTML = "";
+      $sources.innerHTML = "";
+      addAssistant("Started a fresh session. How can I help?");
+      updateSessionPanel();
+    }
+
+    function updateSessionPanel() {
+      $sid.textContent = state.sessionId;
+      $tenant.textContent = state.tenantId || "—";
+      $uid.textContent = state.userId || "anonymous";
+    }
+
+    function addUser(text) {
+      appendMsg("user", text);
+    }
+
+    function addAssistant(text) {
+      appendMsg("assistant", text);
+    }
+
+    function appendMsg(role, text) {
+      const html = DOMPurify.sanitize(markdownToHtml(text || ""));
+      const el = document.createElement("div");
+      el.className = `msg ${role}`;
+      el.innerHTML = `
+        <div class="meta">
+          <span class="role">${role === "user" ? "You" : "Assistant"}</span>
+          <span class="time">${new Date().toLocaleTimeString()}</span>
+        </div>
+        <div class="content">${html}</div>
+      `;
+      $messages.appendChild(el);
+      $messages.scrollTop = $messages.scrollHeight;
+      return el.querySelector(".content");
+    }
+
+    function setAssistantStreamingTarget(contentEl) {
+      return {
+        append(chunk) {
+          // Sanitize each incremental chunk
+          const safe = DOMPurify.sanitize(escapeHtml(chunk));
+          contentEl.insertAdjacentHTML("beforeend", safe);
+          $messages.scrollTop = $messages.scrollHeight;
+        }
+      };
+    }
+
+    async function sendMessage() {
+      if (state.isSending) return;
+      const text = $input.value.trim();
+      if (!text) return;
+
+      addUser(text);
+      $input.value = "";
+      const contentEl = appendMsg("assistant", ""); // streaming target
+      const streamTarget = setAssistantStreamingTarget(contentEl);
+
+      state.isSending = true;
+      $send.disabled = true;
+
+      try {
+        const headers = {
+          "Content-Type": "application/json",
+          "Accept": CONFIG.USE_SSE ? "text/event-stream" : "application/json",
+          "X-Session-Id": state.sessionId,
+          "X-Tenant-Id": state.tenantId
+        };
+        if (state.jwt) headers["Authorization"] = `Bearer ${state.jwt}`;
+        if (state.csrf) headers[CONFIG.CSRF_HEADER] = state.csrf;
+
+        // Minimal payload; expand as your orchestrator expects (history, params, tools, etc.)
+        const body = {
+          message: text,
+          session_id: state.sessionId,
+          // Optional knobs the orchestrator may honor:
+          retrieval: true,
+          tool_use: false,
+          stream: CONFIG.USE_SSE,
+        };
+
+        flashChip($retrievalChip, "ok", "Retrieval");
+        flashChip($guardChip, "ok", "Llama Guard");
+
+        const resp = await fetch(CONFIG.ORCHESTRATOR_URL, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(body),
+          credentials: "include" // send cookies if your edge sets them
+        });
+
+        if (resp.status === 429) {
+          flashChip($rateChip, "bad", "Rate-limited");
+          streamTarget.append("\n\n[rate limit hit — try again shortly]");
+          return;
+        }
+
+        if (!resp.ok) {
+          const errTxt = await safeText(resp);
+          streamTarget.append(`Error ${resp.status}: ${errTxt || resp.statusText}`);
+          return;
+        }
+
+        flashChip($rateChip, "ok", "Rate-limit safe");
+
+        const ctype = resp.headers.get("content-type") || "";
+        if (CONFIG.USE_SSE && ctype.includes("text/event-stream")) {
+          await readSSE(resp, streamTarget);
+        } else if (ctype.includes("application/json")) {
+          const data = await resp.json();
+          const { text: out, sources = [] } = data || {};
+          streamTarget.append(out || "");
+          renderSources(sources);
+        } else {
+          // Fallback: treat as stream of text
+          const reader = resp.body.getReader();
+          const decoder = new TextDecoder();
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            streamTarget.append(decoder.decode(value));
+          }
+        }
+      } catch (e) {
+        streamTarget.append(`\n[network error: ${e?.message || e}]`);
+      } finally {
+        state.isSending = false;
+        $send.disabled = false;
+      }
+    }
+
+    async function readSSE(resp, target) {
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let idx;
+        while ((idx = buffer.indexOf("\n\n")) >= 0) {
+          const evt = buffer.slice(0, idx).trim();
+          buffer = buffer.slice(idx + 2);
+          if (!evt) continue;
+          // Parse Server-Sent Event lines: "data: {...}"
+          const lines = evt.split("\n").map(l => l.replace(/^data:\s?/, ""));
+          const payload = lines.join("\n");
+          if (payload === "[DONE]") return;
+          try {
+            const msg = JSON.parse(payload);
+            if (msg.delta) target.append(msg.delta);
+            if (msg.sources) renderSources(msg.sources);
+            if (msg.error) target.append(`\n[error] ${msg.error}`);
+          } catch {
+            // Not JSON — append raw
+            target.append(payload);
+          }
+        }
+      }
+    }
+
+    function renderSources(sources) {
+      $sources.innerHTML = "";
+      if (!Array.isArray(sources) || !sources.length) return;
+      for (const s of sources) {
+        const pill = document.createElement("span");
+        pill.className = "source-pill";
+        pill.textContent = s.title ? `${s.title}` : (s.url || s.id || "source");
+        pill.title = s.url || "";
+        $sources.appendChild(pill);
+      }
+    }
+
+    // ========= Helpers =========
+    function genId(prefix="id") {
+      const rnd = crypto.getRandomValues(new Uint32Array(3));
+      return `${prefix}_${[...rnd].map(x=>x.toString(16)).join("")}`;
+    }
+    function escapeHtml(s) {
+      return (s || "")
+        .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+        .replace(/"/g,"&quot;").replace(/'/g,"&#039;");
+    }
+    function markdownToHtml(md) {
+      // ultra-tiny markdown → HTML (bold, code, paragraphs). For richer, add a client lib.
+      let html = escapeHtml(md);
+      html = html.replace(/```([\s\S]*?)```/g, (_, code) => `<pre><code>${escapeHtml(code)}</code></pre>`);
+      html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
+      html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+      html = html.replace(/\n{2,}/g, "</p><p>");
+      return `<p>${html}</p>`;
+    }
+    async function safeText(resp) {
+      try { return await resp.text(); } catch { return ""; }
+    }
+    function flashChip(el, kind="ok", text) {
+      el.className = `chip ${kind}`;
+      el.textContent = text;
+      setTimeout(()=>{ el.className = "chip"; }, 3000);
+    }
+
+    // Optional: feature toggles (if your backend exposes readiness endpoints)
+    // Demo: set static statuses on load
+    setTimeout(()=>{
+      $toolChip.className = "chip ok";
+      $toolChip.textContent = "Tool Gateway";
+    }, 500);
+
+    // Seed CSRF (demo). In prod, round-trip to server to mint it (e.g., SameSite cookie + header echo).
+    state.csrf = crypto.getRandomValues(new Uint32Array(1))[0].toString(16);
+  </script>
+</body>
+</html>
