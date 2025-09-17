@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <title>RAG Assistant — Frontend</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- DOMPurify for output sanitization -->
+  <!-- DOMPurify for output sanitization (optional; we have a safe fallback) -->
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js" integrity="sha256-bvJrM5N8H2E5m0q6nCqQ0V5mJpV6e4uM6wzU7D0d1Sk=" crossorigin="anonymous"></script>
   <style>
     :root {
@@ -64,12 +64,7 @@
     .chip.warn { color: #ffe3a3; border-color: #473b1a; background: #1b160a; }
     .chip.bad { color: #ffb4b4; border-color: #4a1a1a; background: #1a0d0d; }
 
-    .main {
-      display: grid;
-      grid-template-columns: 1fr 300px;
-      gap: 12px;
-      min-height: 0;
-    }
+    .main { display: grid; grid-template-columns: 1fr 300px; gap: 12px; min-height: 0; }
     .chat {
       background: color-mix(in oklab, var(--panel) 92%, black 8%);
       border: 1px solid var(--border);
@@ -103,9 +98,7 @@
     .source-list { font-size: 12px; color: var(--muted); display:flex; gap:6px; flex-wrap: wrap; }
     .source-pill { background: #121a2a; border: 1px dashed #2b3a56; border-radius: 999px; padding: 2px 8px; }
 
-    .side {
-      display: flex; flex-direction: column; gap: 12px; min-height: 0;
-    }
+    .side { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
     .panel {
       background: color-mix(in oklab, var(--panel) 96%, black 4%);
       border: 1px solid var(--border);
@@ -166,7 +159,7 @@
         <div class="composer">
           <div>
             <textarea id="input" placeholder="Ask a question… (Shift+Enter for newline, Enter to send)"></textarea>
-            <div class="tiny">Your text is sanitized (DOMPurify) before display. Streaming supported.</div>
+            <div class="tiny">Your text is sanitized before display. Streaming supported.</div>
           </div>
           <div class="actions">
             <button id="loginBtn" class="secondary" type="button">Sign in</button>
@@ -199,16 +192,29 @@
   </div>
 
   <script>
-    // ========= CONFIG (replace TODOs) =========
+    // ---------- Sanitizers ----------
+    // Use DOMPurify when available; otherwise:
+    //  - For HTML we generate ourselves (markdownToHtml output), return as-is
+    //  - For raw text chunks, escape special chars
+    function sanitizeHtmlOrPass(html) {
+      try { if (window.DOMPurify?.sanitize) return DOMPurify.sanitize(html); } catch {}
+      return html; // safe: our markdownToHtml already escaped user text
+    }
+    function escapeHtml(s) {
+      return (s || "")
+        .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+        .replace(/"/g,"&quot;").replace(/'/g,"&#039;");
+    }
+
+    // ========= CONFIG =========
     const CONFIG = {
-      ORCHESTRATOR_URL: "https://your-edge-or-orchestrator.example.com/api/chat", // TODO
+      ORCHESTRATOR_URL: "/api/chat",
       CSRF_HEADER: "X-CSRF-Token",
-      USE_SSE: true, // if your backend streams text/event-stream
-      // Example: pass extra headers for multi-tenant isolation (from JWT claims ideally)
-      TENANT_ID: "demo-tenant", // TODO: derive from your IdP/JWT
+      USE_SSE: true,
+      TENANT_ID: "demo-tenant",
     };
 
-    // ========= STATE (kept in memory; never localStorage per your design) =========
+    // ========= STATE =========
     let state = {
       jwt: null,
       csrf: null,
@@ -250,13 +256,9 @@
     $send.addEventListener("click", () => sendMessage());
     $clear.addEventListener("click", () => newSession());
     $login.addEventListener("click", async () => {
-      // ====== Auth placeholder ======
-      // Replace this with your Auth0 (or other IdP) login flow. When done, call setJwt(token).
-      // Example below asks for a pasted JWT in a prompt (dev only).
       const token = prompt("Paste a dev JWT (for demo only). In prod, use Auth0 login.");
       if (token) {
         setJwt(token);
-        // Example CSRF fetch (optional): call an endpoint that returns a CSRF token cookie/value.
         state.csrf = crypto.getRandomValues(new Uint32Array(1))[0].toString(16); // demo CSRF
         flashChip($jwtChip, "ok", "JWT: signed in");
       }
@@ -264,15 +266,12 @@
 
     function setJwt(token) {
       state.jwt = token;
-      // Derive ids if your JWT has claims (tenant_id, sub, etc.)
       try {
         const [, payload] = token.split(".");
         const claims = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
         state.userId = claims.sub || claims.user_id || "user-from-jwt";
         state.tenantId = claims.tenant_id || state.tenantId;
-      } catch {
-        state.userId = "user-dev";
-      }
+      } catch { state.userId = "user-dev"; }
       updateSessionPanel();
     }
 
@@ -291,16 +290,11 @@
       $uid.textContent = state.userId || "anonymous";
     }
 
-    function addUser(text) {
-      appendMsg("user", text);
-    }
-
-    function addAssistant(text) {
-      appendMsg("assistant", text);
-    }
+    function addUser(text) { appendMsg("user", text); }
+    function addAssistant(text) { appendMsg("assistant", text); }
 
     function appendMsg(role, text) {
-      const html = DOMPurify.sanitize(markdownToHtml(text || ""));
+      const html = sanitizeHtmlOrPass(markdownToHtml(text || "")); // don't escape our own markup
       const el = document.createElement("div");
       el.className = `msg ${role}`;
       el.innerHTML = `
@@ -318,8 +312,8 @@
     function setAssistantStreamingTarget(contentEl) {
       return {
         append(chunk) {
-          // Sanitize each incremental chunk
-          const safe = DOMPurify.sanitize(escapeHtml(chunk));
+          // Streaming sends plain text — escape to be safe
+          const safe = escapeHtml(chunk);
           contentEl.insertAdjacentHTML("beforeend", safe);
           $messages.scrollTop = $messages.scrollHeight;
         }
@@ -349,11 +343,9 @@
         if (state.jwt) headers["Authorization"] = `Bearer ${state.jwt}`;
         if (state.csrf) headers[CONFIG.CSRF_HEADER] = state.csrf;
 
-        // Minimal payload; expand as your orchestrator expects (history, params, tools, etc.)
         const body = {
           message: text,
           session_id: state.sessionId,
-          // Optional knobs the orchestrator may honor:
           retrieval: true,
           tool_use: false,
           stream: CONFIG.USE_SSE,
@@ -366,7 +358,7 @@
           method: "POST",
           headers,
           body: JSON.stringify(body),
-          credentials: "include" // send cookies if your edge sets them
+          credentials: "include"
         });
 
         if (resp.status === 429) {
@@ -389,10 +381,9 @@
         } else if (ctype.includes("application/json")) {
           const data = await resp.json();
           const { text: out, sources = [] } = data || {};
-          streamTarget.append(out || "");
+          streamTarget.append(escapeHtml(out || ""));
           renderSources(sources);
         } else {
-          // Fallback: treat as stream of text
           const reader = resp.body.getReader();
           const decoder = new TextDecoder();
           while (true) {
@@ -422,7 +413,6 @@
           const evt = buffer.slice(0, idx).trim();
           buffer = buffer.slice(idx + 2);
           if (!evt) continue;
-          // Parse Server-Sent Event lines: "data: {...}"
           const lines = evt.split("\n").map(l => l.replace(/^data:\s?/, ""));
           const payload = lines.join("\n");
           if (payload === "[DONE]") return;
@@ -432,7 +422,6 @@
             if (msg.sources) renderSources(msg.sources);
             if (msg.error) target.append(`\n[error] ${msg.error}`);
           } catch {
-            // Not JSON — append raw
             target.append(payload);
           }
         }
@@ -456,40 +445,27 @@
       const rnd = crypto.getRandomValues(new Uint32Array(3));
       return `${prefix}_${[...rnd].map(x=>x.toString(16)).join("")}`;
     }
-    function escapeHtml(s) {
-      return (s || "")
-        .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
-        .replace(/"/g,"&quot;").replace(/'/g,"&#039;");
-    }
     function markdownToHtml(md) {
-      // ultra-tiny markdown → HTML (bold, code, paragraphs). For richer, add a client lib.
-      let html = escapeHtml(md);
+      // Escape user text, then wrap with minimal markup we control.
+      let html = escapeHtml(md || "");
       html = html.replace(/```([\s\S]*?)```/g, (_, code) => `<pre><code>${escapeHtml(code)}</code></pre>`);
       html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
       html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
       html = html.replace(/\n{2,}/g, "</p><p>");
       return `<p>${html}</p>`;
     }
-    async function safeText(resp) {
-      try { return await resp.text(); } catch { return ""; }
-    }
+    async function safeText(resp) { try { return await resp.text(); } catch { return ""; } }
     function flashChip(el, kind="ok", text) {
       el.className = `chip ${kind}`;
       el.textContent = text;
       setTimeout(()=>{ el.className = "chip"; }, 3000);
     }
 
-    // Optional: feature toggles (if your backend exposes readiness endpoints)
-    // Demo: set static statuses on load
-    setTimeout(()=>{
-      $toolChip.className = "chip ok";
-      $toolChip.textContent = "Tool Gateway";
-    }, 500);
+    // Demo toggles
+    setTimeout(()=>{ $toolChip.className = "chip ok"; $toolChip.textContent = "Tool Gateway"; }, 500);
 
-    
-    // Seed CSRF (demo). In prod, round-trip to server to mint it (e.g., SameSite cookie + header echo).
+    // Seed CSRF (demo)
     state.csrf = crypto.getRandomValues(new Uint32Array(1))[0].toString(16);
   </script>
 </body>
 </html>
-
