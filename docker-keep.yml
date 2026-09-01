@@ -1,0 +1,33 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11435:11434"
+    volumes:
+      - ollama:/root/.ollama
+
+  orchestrator:
+    build:
+      context: ./Orchestrator
+      dockerfile: dockerfile
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - DEFAULT_MODEL=llama2:7b
+      #- DEFAULT_MODEL=mistral:7b
+      #- DEFAULT_MODEL = mistral:latest
+      #DEFAULT_MODEL=llama2-uncensored
+      #-DEFAULT_MODEL=llama3.2:3b
+    depends_on:
+      - ollama
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: api-gateway/dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      - orchestrator
+
+volumes:
+  ollama:

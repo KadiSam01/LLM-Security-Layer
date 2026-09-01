@@ -4,7 +4,5 @@ FROM nginx:latest
 # NGINX config
 COPY api-gateway/nginx.conf /etc/nginx/nginx.conf
 
-# Serve the SPA
 COPY index.html /usr/share/nginx/html/index.html
-# Optional assets (if you have a /frontend folder)
 COPY frontend/ /usr/share/nginx/html/

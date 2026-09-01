@@ -7,13 +7,8 @@ services:
       - "11435:11434"
     volumes:
       - ollama:/root/.ollama
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
+    deploy: {}
+    runtime: nvidia
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
@@ -24,18 +19,12 @@ services:
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
       - DEFAULT_MODEL=llama2:7b
-      #- NVIDIA_VISIBLE_DEVICES=all
-      #- NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       #- DEFAULT_MODEL=llama2-uncensored
     depends_on:
       - ollama
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
+    runtime: nvidia
   api-gateway:
     build:
       context: .

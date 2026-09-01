@@ -4,7 +4,8 @@
   <meta charset="UTF-8" />
   <title>RAG Assistant — Frontend</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js" crossorigin="anonymous"></script>
+  <!-- DOMPurify for output sanitization (optional; we have a safe fallback) -->
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js" integrity="sha256-bvJrM5N8H2E5m0q6nCqQ0V5mJpV6e4uM6wzU7D0d1Sk=" crossorigin="anonymous"></script>
   <style>
     :root {
       --bg: #0f172a;
@@ -45,7 +46,9 @@
       gap: 10px;
     }
     header { justify-content: space-between; }
-    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; }
+    .brand {
+      display: flex; align-items: center; gap: 10px; font-weight: 700;
+    }
     .brand .dot {
       width: 10px; height: 10px; border-radius: 50%;
       background: linear-gradient(135deg, var(--accent), var(--accent-2));
@@ -60,6 +63,7 @@
     .chip.ok { color: #9ffcc2; border-color: #1d3b2a; background: #0f1b15; }
     .chip.warn { color: #ffe3a3; border-color: #473b1a; background: #1b160a; }
     .chip.bad { color: #ffb4b4; border-color: #4a1a1a; background: #1a0d0d; }
+
     .main { display: grid; grid-template-columns: 1fr 300px; gap: 12px; min-height: 0; }
     .chat {
       background: color-mix(in oklab, var(--panel) 92%, black 8%);
@@ -69,8 +73,16 @@
       display: flex; flex-direction: column; gap: 12px;
       min-height: 0;
     }
-    .messages { overflow:auto; flex:1; padding-right: 6px; display: flex; flex-direction: column; gap: 10px; }
-    .msg { display: grid; gap: 6px; background: #0c1424; border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; }
+    .messages {
+      overflow:auto; flex:1; padding-right: 6px;
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .msg {
+      display: grid; gap: 6px;
+      background: #0c1424;
+      border: 1px solid var(--border);
+      border-radius: 12px; padding: 10px 12px;
+    }
     .msg.user { background: #0d1a2b; border-color: #2a3b52 }
     .msg.assistant { background: #0b1728; border-color: #25374d }
     .meta { display:flex; gap:8px; align-items:center; color: var(--muted); font-size: 12px; }
@@ -85,6 +97,7 @@
     .content pre { padding: 10px; overflow:auto; }
     .source-list { font-size: 12px; color: var(--muted); display:flex; gap:6px; flex-wrap: wrap; }
     .source-pill { background: #121a2a; border: 1px dashed #2b3a56; border-radius: 999px; padding: 2px 8px; }
+
     .side { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
     .panel {
       background: color-mix(in oklab, var(--panel) 96%, black 4%);
@@ -96,6 +109,7 @@
     .kv { display: grid; grid-template-columns: 1fr auto; gap: 8px 10px; align-items: center; }
     .kv .k { color: var(--muted); font-size: 12px; }
     .kv .v { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #cbd5e1; font-size: 12px; }
+
     .composer {
       display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: end;
       background: color-mix(in oklab, var(--panel) 96%, black 4%); border: 1px solid var(--border);
@@ -113,7 +127,10 @@
       color: #051224; border: 0; border-radius: 10px; padding: 10px 14px;
       font-weight: 700; cursor: pointer;
     }
-    button.secondary { background: #0b1220; color: var(--text); border: 1px solid var(--border); }
+    button.secondary {
+      background: #0b1220; color: var(--text);
+      border: 1px solid var(--border);
+    }
     button:disabled { opacity: .6; cursor: not-allowed; }
     .tiny { font-size: 12px; color: var(--muted); }
   </style>
@@ -138,21 +155,22 @@
     <div class="main">
       <section class="chat">
         <div id="messages" class="messages"></div>
+
         <div class="composer">
           <div>
             <textarea id="input" placeholder="Ask a question… (Shift+Enter for newline, Enter to send)"></textarea>
             <div class="tiny">Your text is sanitized before display. Streaming supported.</div>
           </div>
           <div class="actions">
-            <label for="fileInput" class="secondary" style="cursor:pointer; padding:10px 14px; border-radius:10px; border:1px solid var(--border);">
-                 📎 Upload
-            </label>
-            <input id="fileInput" type="file" style="display:none;" />
+	    <label for="fileInput" class="secondary" style="cursor:pointer; padding:10px 14px; border-radius:10px; border:1px solid var(--border);">
+   		 📎 Upload
+ 	    </label>
+	    <input id="fileInput" type="file" style="display:none;" />
             <button id="loginBtn" class="secondary" type="button">Sign in</button>
             <button id="clearBtn" class="secondary" type="button">New session</button>
             <button id="sendBtn" type="button">Send</button>
           </div>
-          <div id="filePreview" class="tiny" style="margin-top:4px; color:var(--muted);"></div>
+	 </id="filePreview" class="tiny" style="margin-top:4px; color:var(--muted);"></div>
         </div>
       </section>
 
@@ -179,9 +197,13 @@
   </div>
 
   <script>
+    // ---------- Sanitizers ----------
+    // Use DOMPurify when available; otherwise:
+    //  - For HTML we generate ourselves (markdownToHtml output), return as-is
+    //  - For raw text chunks, escape special chars
     function sanitizeHtmlOrPass(html) {
       try { if (window.DOMPurify?.sanitize) return DOMPurify.sanitize(html); } catch {}
-      return html;
+      return html; // safe: our markdownToHtml already escaped user text
     }
     function escapeHtml(s) {
       return (s || "")
@@ -189,6 +211,7 @@
         .replace(/"/g,"&quot;").replace(/'/g,"&#039;");
     }
 
+    // ========= CONFIG =========
     const CONFIG = {
       ORCHESTRATOR_URL: "/api/chat",
       CSRF_HEADER: "X-CSRF-Token",
@@ -196,6 +219,7 @@
       TENANT_ID: "demo-tenant",
     };
 
+    // ========= STATE =========
     let state = {
       jwt: null,
       csrf: null,
@@ -206,6 +230,7 @@
       isSending: false,
     };
 
+    // ========= UI ELEMENTS =========
     const $messages = document.getElementById("messages");
     const $input = document.getElementById("input");
     const $send = document.getElementById("sendBtn");
@@ -235,9 +260,11 @@
       }
     });
 
+    // ========= INIT =========
     updateSessionPanel();
     addAssistant("Hi! I’m ready. Sign in (or use a dev token), then ask me anything.");
 
+    // Keyboard: Enter to send, Shift+Enter newline
     $input.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
@@ -251,7 +278,7 @@
       const token = prompt("Paste a dev JWT (for demo only). In prod, use Auth0 login.");
       if (token) {
         setJwt(token);
-        state.csrf = crypto.getRandomValues(new Uint32Array(1))[0].toString(16);
+        state.csrf = crypto.getRandomValues(new Uint32Array(1))[0].toString(16); // demo CSRF
         flashChip($jwtChip, "ok", "JWT: signed in");
       }
     });
@@ -286,7 +313,7 @@
     function addAssistant(text) { appendMsg("assistant", text); }
 
     function appendMsg(role, text) {
-      const html = sanitizeHtmlOrPass(markdownToHtml(text || ""));
+      const html = sanitizeHtmlOrPass(markdownToHtml(text || "")); // don't escape our own markup
       const el = document.createElement("div");
       el.className = `msg ${role}`;
       el.innerHTML = `
@@ -304,6 +331,7 @@
     function setAssistantStreamingTarget(contentEl) {
       return {
         append(chunk) {
+          // Streaming sends plain text — escape to be safe
           const safe = escapeHtml(chunk);
           contentEl.insertAdjacentHTML("beforeend", safe);
           $messages.scrollTop = $messages.scrollHeight;
@@ -311,80 +339,105 @@
       };
     }
 
-    // ✅ Updated sendMessage() (works with upload, keeps everything else same)
     async function sendMessage() {
       if (state.isSending) return;
       const text = $input.value.trim();
-      if (!text && !attachedFile) return;
+      if (!text) return;
 
-      addUser(text || "(uploaded file)");
+      addUser(text);
       $input.value = "";
-      const contentEl = appendMsg("assistant", "");
+      const contentEl = appendMsg("assistant", ""); // streaming target
       const streamTarget = setAssistantStreamingTarget(contentEl);
 
       state.isSending = true;
       $send.disabled = true;
 
       try {
-        const headers = { "X-Session-Id": state.sessionId, "X-Tenant-Id": state.tenantId };
+        const headers = {
+          "X-Session-Id": state.sessionId,
+          "X-Tenant-Id": state.tenantId
+        };
         if (state.jwt) headers["Authorization"] = `Bearer ${state.jwt}`;
         if (state.csrf) headers[CONFIG.CSRF_HEADER] = state.csrf;
 
-        let filePath = null;
-        if (attachedFile) {
-          const uploadForm = new FormData();
-          uploadForm.append("session_id", state.sessionId);
-          uploadForm.append("file", attachedFile);
+        let body;
+        let fetchOptions = {
+          method: "POST",
+          headers,
+          credentials: "include"
+        };
 
-          const uploadResp = await fetch("/api/upload", { method: "POST", body: uploadForm });
-          const uploadData = await uploadResp.json();
-          if (!uploadData.success) {
-            streamTarget.append(`[Upload failed: ${uploadData.error}]`);
-          } else {
-            filePath = uploadData.path;
-          }
+        if (attachedFile) {
+          body = new FormData();
+          body.append("message", text);
+          body.append("session_id", state.sessionId);
+          body.append("retrieval", "true");
+  	  body.append("tool_use", "false");
+  	  body.append("stream", CONFIG.USE_SSE);
+          body.append("file", attachedFile);
+          fetchOptions.body = body;
+        } else {
+          headers["Content-Type"] = "application/json";
+          headers["Accept"] = CONFIG.USE_SSE ? "text/event-stream" : "application/json";
+          body = JSON.stringify({
+            message: text,
+            session_id: state.sessionId,
+            retrieval: true,
+            tool_use: false,
+            stream: CONFIG.USE_SSE
+          });
+          fetchOptions.body = body;
         }
 
-        headers["Content-Type"] = "application/json";
-        headers["Accept"] = CONFIG.USE_SSE ? "text/event-stream" : "application/json";
-
-        const body = JSON.stringify({
-          message: text || "Analyze the uploaded file.",
-          session_id: state.sessionId,
-          retrieval: true,
-          tool_use: false,
-          stream: CONFIG.USE_SSE,
-          file_path: filePath
-        });
+        flashChip($retrievalChip, "ok", "Retrieval");
+        flashChip($guardChip, "ok", "Llama Guard");
 
         const resp = await fetch(CONFIG.ORCHESTRATOR_URL, {
           method: "POST",
           headers,
-          credentials: "include",
-          body
+          body: JSON.stringify(body),
+          credentials: "include"
         });
 
-        if (!resp.ok) {
-          const errTxt = await resp.text();
-          streamTarget.append(`Error ${resp.status}: ${errTxt}`);
+        if (resp.status === 429) {
+          flashChip($rateChip, "bad", "Rate-limited");
+          streamTarget.append("\n\n[rate limit hit — try again shortly]");
           return;
         }
 
+        if (!resp.ok) {
+          const errTxt = await safeText(resp);
+          streamTarget.append(`Error ${resp.status}: ${errTxt || resp.statusText}`);
+          return;
+        }
+
+        flashChip($rateChip, "ok", "Rate-limit safe");
+
         const ctype = resp.headers.get("content-type") || "";
-        if (ctype.includes("text/event-stream")) {
+        if (CONFIG.USE_SSE && ctype.includes("text/event-stream")) {
           await readSSE(resp, streamTarget);
         } else if (ctype.includes("application/json")) {
           const data = await resp.json();
-          streamTarget.append(escapeHtml(data.text || ""));
+          const { text: out, sources = [] } = data || {};
+          streamTarget.append(escapeHtml(out || ""));
+          renderSources(sources);
+        } else {
+          const reader = resp.body.getReader();
+          const decoder = new TextDecoder();
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            streamTarget.append(decoder.decode(value));
+          }
         }
       } catch (e) {
         streamTarget.append(`\n[network error: ${e?.message || e}]`);
       } finally {
         state.isSending = false;
         $send.disabled = false;
-        attachedFile = null;
-        $filePreview.textContent = "";
-        $fileInput.value = "";
+	attachedfile = null;
+	$filePreview.textContent = "";
+	$fileInput.value = "";
       }
     }
 
@@ -428,11 +481,13 @@
       }
     }
 
+    // ========= Helpers =========
     function genId(prefix="id") {
       const rnd = crypto.getRandomValues(new Uint32Array(3));
       return `${prefix}_${[...rnd].map(x=>x.toString(16)).join("")}`;
     }
     function markdownToHtml(md) {
+      // Escape user text, then wrap with minimal markup we control.
       let html = escapeHtml(md || "");
       html = html.replace(/```([\s\S]*?)```/g, (_, code) => `<pre><code>${escapeHtml(code)}</code></pre>`);
       html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
@@ -447,7 +502,10 @@
       setTimeout(()=>{ el.className = "chip"; }, 3000);
     }
 
+    // Demo toggles
     setTimeout(()=>{ $toolChip.className = "chip ok"; $toolChip.textContent = "Tool Gateway"; }, 500);
+
+    // Seed CSRF (demo)
     state.csrf = crypto.getRandomValues(new Uint32Array(1))[0].toString(16);
   </script>
 </body>
